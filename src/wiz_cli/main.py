@@ -62,13 +62,19 @@ def _resolve_target(target):
     return target
 
 
-def _resolve_targets(target_str):
+async def _resolve_targets(target_str):
+    """Resolve targets. 'all' uses named bulbs, or discovers if none saved."""
     if target_str.lower() == "all":
         names = _load_names()
-        if not names:
-            print("No named bulbs. Use 'wiz rename <ip> <name>' first.")
+        if names:
+            return list(names.keys())
+        broadcast = _get_broadcast()
+        print(f"Discovering bulbs on {broadcast}...")
+        found = await discovery.discover_lights(broadcast_space=broadcast)
+        if not found:
+            print("No bulbs found on network.")
             return []
-        return list(names.keys())
+        return [b.ip for b in found]
     return [_resolve_target(t.strip()) for t in target_str.split("+")]
 
 
@@ -101,7 +107,7 @@ async def _run_on_bulb(ip, action):
 
 
 async def cmd_on(args):
-    ips = _resolve_targets(args.target)
+    ips = await _resolve_targets(args.target)
     pilot = PilotBuilder(brightness=args.brightness) if args.brightness else PilotBuilder()
     async def _on(light, ip):
         await light.turn_on(pilot)
@@ -110,7 +116,7 @@ async def cmd_on(args):
 
 
 async def cmd_off(args):
-    ips = _resolve_targets(args.target)
+    ips = await _resolve_targets(args.target)
     async def _off(light, ip):
         await light.turn_off()
         print(f"Turned off {_display_name(ip)}")
@@ -118,7 +124,7 @@ async def cmd_off(args):
 
 
 async def cmd_color(args):
-    ips = _resolve_targets(args.target)
+    ips = await _resolve_targets(args.target)
     r, g, b = args.r, args.g, args.b
     async def _color(light, ip):
         await light.turn_on(PilotBuilder(rgb=(r, g, b)))
@@ -127,7 +133,7 @@ async def cmd_color(args):
 
 
 async def cmd_brightness(args):
-    ips = _resolve_targets(args.target)
+    ips = await _resolve_targets(args.target)
     level = max(1, min(255, args.level))
     async def _brightness(light, ip):
         if args.level == 0:
@@ -140,7 +146,7 @@ async def cmd_brightness(args):
 
 
 async def cmd_scene(args):
-    ips = _resolve_targets(args.target)
+    ips = await _resolve_targets(args.target)
     scene_name = args.scene.lower().replace(" ", "_")
     if scene_name not in SCENES:
         print(f"Unknown scene '{args.scene}'. Available:")
@@ -154,7 +160,7 @@ async def cmd_scene(args):
 
 
 async def cmd_state(args):
-    ips = _resolve_targets(args.target)
+    ips = await _resolve_targets(args.target)
     async def _state(light, ip):
         state = await light.updateState()
         lines = [f"State of {_display_name(ip)}:"]
